@@ -1,0 +1,172 @@
+---
+title: "Weather events' influence on public health and economy in the United States" 
+author: "Soundouss Messoudi"
+date: "September 27th, 2015"
+output: html_document
+---
+
+##Synopsis 
+
+This report's objective is to study the severe weather events that can cause both public health and economic problems for communities and municipalities in the US based on the storm database collected from the U.S. National Oceanic and Atmospheric Administration's (NOAA) from 1950 - 2011. Indeed, many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern. The report identifies the most harmful weather events that cause both public health  (as measured by mean number of combined fatalities and injuries) and economic (as measured by the mean property damage and mean crop damage sustained during the event) problems. The results of this analysis show that convection and extreme temperatures are the weather events that have the greatest impact on public health. Whereas the extremely harmful events for economy are convection and flood.
+
+**About the Data**
+
+The weather events are divided into 13 groups:
+
+- Convection (e.g. tornado, lightning, thunderstorm, hail)
+- Flood (e.g. flash flood, river flood)
+- Extreme temperatures (e.g. extreme cold, extreme hot)
+- Marine (e.g. tsunami, coastal storm, rip current, high waves, high seas)
+- Winter (e.g. avalanche, snow, blizzard, icy roads, freeze)
+- Tropical Cyclones (e.g. tropical storm, hurricane)
+- High Wind (e.g. winds, microburst)
+- Fire
+- Rain
+- Drought/Dust (e.g. drought, dust storm, dust)
+- Landslide
+- Fog
+- Others
+
+## Basic settings
+
+```{r}
+echo = TRUE  # Always make code visible
+options(scipen = 1)  # Turn off scientific notations for numbers
+library(R.utils)
+library(ggplot2)
+library(plyr)
+require(gridExtra)
+```
+
+## Data Processing
+
+After downloading the data, unziping it and putting it in the working directory, we read the "repdata-data-StormData.csv" file.
+
+```{r}
+if (!"stormData" %in% ls()) {
+    stormData <- read.csv("repdata-data-StormData.csv", sep = ",")
+}
+dim(stormData)
+head(stormData, n = 2)
+```
+
+There are 902297 rows and 37 columns in total.
+The events in the database start in the year 1950 and end in November 2011.
+
+**Select useful data** 
+
+```{r}
+if (dim(stormData)[2] == 37) {
+    stormData$year <- as.numeric(format(as.Date(stormData$BGN_DATE, format = "%m/%d/%Y %H:%M:%S"), "%Y"))
+}
+hist(stormData$year, breaks = 30)
+```  
+
+Based on the above histogram, we see that the number of events tracked starts to significantly increase around 1995. So, we use the subset of the data from 1990 to 2011 to get most out of good records.
+
+```{r}
+storm <- stormData[stormData$year >= 1995, ]
+dim(storm)
+```
+
+Now, there are 681500 rows and 38 columns in total.
+
+## Analyse
+
+**Public Health Harmful Events**
+
+This histogram Shows fatalities and injuries for weather events.
+
+```{r}
+sortHelper <- function(fieldName, top = 15, dataset = stormData) {
+    index <- which(colnames(dataset) == fieldName)
+    field <- aggregate(dataset[, index], by = list(dataset$EVTYPE), FUN = "sum")
+    names(field) <- c("EVTYPE", fieldName)
+    field <- arrange(field, field[, 2], decreasing = T)
+    field <- head(field, n = top)
+    field <- within(field, EVTYPE <- factor(x = EVTYPE, levels = field$EVTYPE))
+    return(field)
+}
+
+fatalities <- sortHelper("FATALITIES", dataset = storm)
+injuries <- sortHelper("INJURIES", dataset = storm)
+```
+
+**Economic Harmful Events**
+  
+This histograms show weather events' harm to the economy.
+
+```{r}
+convertHelper <- function(dataset = storm, fieldName, newFieldName) {
+    totalLen <- dim(dataset)[2]
+    index <- which(colnames(dataset) == fieldName)
+    dataset[, index] <- as.character(dataset[, index])
+    logic <- !is.na(toupper(dataset[, index]))
+    dataset[logic & toupper(dataset[, index]) == "B", index] <- "9"
+    dataset[logic & toupper(dataset[, index]) == "M", index] <- "6"
+    dataset[logic & toupper(dataset[, index]) == "K", index] <- "3"
+    dataset[logic & toupper(dataset[, index]) == "H", index] <- "2"
+    dataset[logic & toupper(dataset[, index]) == "", index] <- "0"
+    dataset[, index] <- as.numeric(dataset[, index])
+    dataset[is.na(dataset[, index]), index] <- 0
+    dataset <- cbind(dataset, dataset[, index - 1] * 10^dataset[, index])
+    names(dataset)[totalLen + 1] <- newFieldName
+    return(dataset)
+}
+
+storm <- convertHelper(storm, "PROPDMGEXP", "propertyDamage")
+storm <- convertHelper(storm, "CROPDMGEXP", "cropDamage")
+names(storm)
+options(scipen=999)
+property <- sortHelper("propertyDamage", dataset = storm)
+crop <- sortHelper("cropDamage", dataset = storm)
+```
+
+## Results
+
+**Public Health Harmful Events**
+
+We have two sorted lists of severe weather events below by the number of people badly affected.
+
+```{r}
+fatalities
+injuries
+```
+
+These are graphs of total fatalities and total injuries affected by these severe weather events. 
+
+```{r}
+fatalitiesPlot <- qplot(EVTYPE, data = fatalities, weight = FATALITIES, geom = "bar", binwidth = 1) + scale_y_continuous("Number of Fatalities") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + xlab("Severe Weather Type") + ggtitle("Total Fatalities by Severe Weather\n Events in the U.S.\n from 1995 - 2011")
+injuriesPlot <- qplot(EVTYPE, data = injuries, weight = INJURIES, geom = "bar", binwidth = 1) + scale_y_continuous("Number of Injuries") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + xlab("Severe Weather Type") + ggtitle("Total Injuries by Severe Weather\n Events in the U.S.\n from 1995 - 2011")
+grid.arrange(fatalitiesPlot, injuriesPlot, ncol = 2)
+```  
+
+Based on the above histograms, we find that Excessive heat and Tornado cause most fatalities. Moreover, Tornado causes most injuries in the U.S. from 1995 to 2011.
+
+**Economic Harmful Events**
+
+We have two sorted lists of severe weather events below by the amount of money cost by damages.  
+
+```{r}
+property
+crop
+```
+
+These are graphs of of total property damage and total crop damage affected by these severe weather events. 
+
+```{r}
+propertyPlot <- qplot(EVTYPE, data = property, weight = propertyDamage, geom = "bar", binwidth = 1) + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) + scale_y_continuous("Property Damage in US dollars")+ 
+    xlab("Severe Weather Type") + ggtitle("Total Property Damage by\n Severe Weather Events in\n the U.S. from 1995 - 2011")
+
+cropPlot<- qplot(EVTYPE, data = crop, weight = cropDamage, geom = "bar", binwidth = 1) + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) + scale_y_continuous("Crop Damage in US dollars") + 
+    xlab("Severe Weather Type") + ggtitle("Total Crop Damage by \nSevere Weather Events in\n the U.S. from 1995 - 2011")
+grid.arrange(propertyPlot, cropPlot, ncol = 2)
+```  
+
+Based on the above histograms, we find that Flood and hurricane/typhoon cause most property damage. Furthermore, drought and flood cause most crop damage in the U.S. from 1995 to 2011.
+
+## Conclusion  
+
+The results of this analysis show that convection and extreme temperatures are the weather events that have the greatest impact on public health. Whereas the extremely harmful events for economy are convection and flood.
